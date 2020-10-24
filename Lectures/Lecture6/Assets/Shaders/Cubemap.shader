@@ -69,6 +69,7 @@
             float3 SampleColor(float3 direction)
             {   
                 half4 tex = texCUBE(_Cube, direction);
+//                half4 tex = texCUBElod(_Cube, float4(direction, 0));
                 return DecodeHDR(tex, _Cube_HDR).rgb;
             }
             
@@ -89,6 +90,18 @@
                 return a2 / (UNITY_PI * Sqr(NDotH2 * (a2 - 1) + 1));
             }
 
+            float3 GetRandomVecOnSphere(int seed)
+            {
+                float alpha = Random(2 * seed) * 2 * UNITY_PI;
+                float cos_alpha = cos(alpha);
+                float sin_alpha = sin(alpha);
+                
+                float cos_theta = 2 * Random(2 * seed + 1) - 1;
+                float sin_theta = sqrt(1 - Sqr(cos_theta));
+          
+                return float3(sin_theta * cos_alpha, sin_theta * sin_alpha, cos_theta);
+            }
+
             fixed4 frag (v2f i) : SV_Target
             {
                 float3 normal = normalize(i.normal);
@@ -98,10 +111,28 @@
                 // Replace this specular calculation by Montecarlo.
                 // Normalize the BRDF in such a way, that integral over a hemysphere of (BRDF * dot(normal, w')) == 1
                 // TIP: use Random(i) to get a pseudo-random value.
-                float3 viewRefl = reflect(-viewDirection.xyz, normal);
-                float3 specular = SampleColor(viewRefl);
+
+                int N = 30000;
+//                float3 viewRefl = reflect(-viewDirection.xyz, normal);
+//                float3 specular = SampleColor(viewRefl);
                 
-                return fixed4(specular, 1);
+                float brdf_normalizer = 0;
+                float3 L = float3(0, 0, 0);
+                for (int it = 0; it < N; it++)
+                {
+                    float3 random_vec = GetRandomVecOnSphere(it);
+                    float cos_theta = dot(normal, random_vec);
+                    if (cos_theta > 0)
+                    {
+                        float brdf = GetSpecularBRDF(viewDirection, random_vec, normal);
+                        brdf_normalizer += brdf * cos_theta;
+                        L += SampleColor(random_vec) * brdf * cos_theta;
+                    }
+                }
+                L /= brdf_normalizer;
+                
+                return fixed4(L, 1);
+//                return fixed4(specular, 1);
             }
             ENDCG
         }
