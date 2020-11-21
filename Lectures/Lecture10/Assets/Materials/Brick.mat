@@ -9,7 +9,7 @@ Material:
   m_PrefabAsset: {fileID: 0}
   m_Name: Brick
   m_Shader: {fileID: 4800000, guid: 95922f08df16cab4aae72c54287c9db6, type: 3}
-  m_ShaderKeywords: MODE_POM_SHADOWS _NORMALMAP _OVERLAY_NORMAL _PARALLAXMAP
+  m_ShaderKeywords: MODE_POM _NORMALMAP _OVERLAY_NORMAL _PARALLAXMAP
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0

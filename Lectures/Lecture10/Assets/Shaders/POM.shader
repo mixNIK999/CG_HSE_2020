@@ -30,6 +30,9 @@
         // texture coordinate for the normal map
         float2 uv : TEXCOORD5;
         float4 clip : SV_POSITION;
+        
+        half3 wTangent : TEXCOORD1;
+        half3 wBitangent : TEXCOORD2;
     };
 
     // Vertex shader now also gets a per-vertex tangent vector.
@@ -43,10 +46,12 @@
         half3 wTangent = UnityObjectToWorldDir(tangent.xyz);
         
         o.uv = uv;
-        o.worldSurfaceNormal = normal;
+        o.worldSurfaceNormal = wNormal;
         
         // compute bitangent from cross product of normal and tangent and output it
-        
+        half tangentSign = tangent.w * unity_WorldTransformParams.w;
+        o.wTangent = wTangent;
+        o.wBitangent = cross(wNormal, wTangent) * tangentSign;
         return o;
     }
 
@@ -69,13 +74,38 @@
         float2 uv = i.uv;
         
         float3 worldViewDir = normalize(i.worldPos.xyz - _WorldSpaceCameraPos.xyz);
+        half3x3 inv_tbn = half3x3(i.wTangent, i.wBitangent, i.worldSurfaceNormal);
+        half3x3 tbn = transpose(inv_tbn);
+        float3 tgViewDir = normalize(mul(inv_tbn, worldViewDir));
+
 #if MODE_BUMP
         // Change UV according to the Parallax Offset Mapping
+        float h = tex2D(_HeightMap, uv).z;
+        h = h * _MaxHeight;
+        float2 offset = h * tgViewDir.xy / (tgViewDir.z);
+        uv += offset;
 #endif   
     
         float depthDif = 0;
 #if MODE_POM | MODE_POM_SHADOWS    
         // Change UV according to Parallax Occclusion Mapping
+        float tgABS =  length(tgViewDir.xy);
+        if (tgABS != 0) {
+            float3 tgStep = tgViewDir * _StepLength / tgABS;
+            float3 pointB = float3(uv.x, uv.y, _MaxHeight);
+            float3 pointA = pointB + tgStep;
+            [unroll(150)] for (int t = 0; t < _MaxStepCount; ++t) {
+                float h = tex2D(_HeightMap, pointA.xy).z * _MaxHeight;
+                if (h <= pointA.z) {
+                    pointB = pointA;
+                    pointA += tgStep;
+                }
+            }
+            float hA = abs(tex2D(_HeightMap, pointA.xy).z * _MaxHeight - pointA.z);
+            float hB = abs(pointB.z - tex2D(_HeightMap, pointB.xy).z * _MaxHeight);
+            uv = lerp(pointA.xy, pointB.xy, hA / (hA + hB));
+            // uv = pointA.xy;
+        }
 #endif
 
         float3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
@@ -87,6 +117,11 @@
         half3 normal = i.worldSurfaceNormal;
 #if !MODE_PLAIN
         // Implement Normal Mapping
+        half3 tnormal = UnpackNormal(tex2D(_NormalMap, uv));
+        // half3 actualNormal = tnormal.x * i.wTangent + tnormal.y * i.wBitangent + tnormal.z * normal;
+        half3 actualNormal =  mul(tbn, tnormal);
+
+        normal = actualNormal;
 #endif
 
         // Diffuse lightning
